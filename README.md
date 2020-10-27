@@ -1,6 +1,6 @@
-# SEPOMEX App API
+# SEPOMEX API
 
-Python app that would go through a txt file to get Postal Codes from SEPOMEX.
+Flask app that would go through a txt file to get Postal Codes from SEPOMEX.
 
 It currently supports the following methods:
 
