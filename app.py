@@ -1,8 +1,11 @@
-# Python app that would go through a txt file to get Postal Codes from SEPOMEX
-
-# Function for getting Asentamiento, Tipo de Asentamiento, Municipio, Estado
-# y Ciudad based on Postal Code from the CPDescarga.txt file
 from flask import Flask, jsonify
+from datetime import datetime
+import os
+import time
+from selenium import webdriver
+from zipfile import ZipFile
+from dotenv import load_dotenv
+load_dotenv()
 
 app = Flask(__name__)
 app.config['JSONIFY_PRETTYPRINT_REGULAR'] = True
@@ -19,6 +22,8 @@ def get_data_by_cp(postal_code):
     - Ciudad
     The result will be in a list form, and might contain more than one line
     '''
+    if not file_updated():
+        download_file()
     # Open file for read
     sepomex_file = open("CPdescarga.txt", encoding="ISO-8859-1")
     # List definition for the resulting lines
@@ -37,7 +42,7 @@ def get_data_by_cp(postal_code):
             results.append(info)
     # Close the file
     sepomex_file.close()
-    return jsonify(results=results)
+    return jsonify(results=results, count=len(results))
 
 
 @app.route('/estados', methods=['GET'])
@@ -45,6 +50,8 @@ def get_all_estados():
     '''
     Function that will return the complete catalog of Estados with their Code
     '''
+    if not file_updated():
+        download_file()
     # Open file for read
     sepomex_file = open("CPdescarga.txt", encoding="ISO-8859-1")
     # List definition for the resulting lines
@@ -67,7 +74,7 @@ def get_all_estados():
                 results.append(info)
     # CLose the file
     sepomex_file.close()
-    return jsonify(results=results)
+    return jsonify(results=results, count=len(results))
 
 
 @app.route('/municipios/<string:c_estado>', methods=['GET'])
@@ -75,6 +82,8 @@ def get_ciudad_by_estado(c_estado):
     '''
     Function that will return all matches for Ciudad based on the Estado Code.
     '''
+    if not file_updated():
+        download_file()
     # Open file for read
     sepomex_file = open("CPdescarga.txt", encoding="ISO-8859-1")
     # List definition for the resulting lines
@@ -96,7 +105,7 @@ def get_ciudad_by_estado(c_estado):
                 results.append(info)
     # Close the file
     sepomex_file.close()
-    return jsonify(results=results)
+    return jsonify(results=results, count=len(results))
 
 
 @app.route(
@@ -107,6 +116,8 @@ def get_asentamiento_by_estado_and_municipio(c_estado, c_mnpio):
     Function that will return all the matches for Asentamiento, Tipo
     Asentamiento, Código Postal based on Estado and Municipio
     '''
+    if not file_updated():
+        download_file()
     # Open file for read
     sepomex_file = open("CPdescarga.txt", encoding="ISO-8859-1")
     # List definition for the resulting for the resulting lines iterated
@@ -127,7 +138,59 @@ def get_asentamiento_by_estado_and_municipio(c_estado, c_mnpio):
                 results.append(info)
     # Close file
     sepomex_file.close()
-    return jsonify(results=results)
+    return jsonify(results=results, count=len(results))
+
+
+def file_updated():
+    """
+        Validates if file exists and if it has been less than 24 hours since
+        last download. Returns True if both conditions meet, else False.
+    """
+    if os.path.exists("CPdescarga.txt"):
+        modified_date_str = time.ctime(os.path.getmtime('CPdescarga.txt'))
+        modified_datetime = datetime.strptime(
+            modified_date_str,
+            "%a %b %d %H:%M:%S %Y")
+        timedelta_diff = datetime.now() - modified_datetime
+        if timedelta_diff.total_seconds() < 86400:
+            return True
+
+    return False
+
+
+def download_file():
+    """
+        Using selenium to download the file on a txt file format.
+    """
+    print("Downloading latest version of the file...")
+    options = webdriver.ChromeOptions()
+    options.add_argument('--ignore-certificate-errors')
+    options.add_argument('--test-type')
+    driver = webdriver.Chrome(
+        os.environ.get("CHROME_DRIVER_LOC") + 'chromedriver',
+        chrome_options=options
+    )
+    driver.get(
+        'https://www.correosdemexico.gob.mx/SSLServicios/'
+        'ConsultaCP/CodigoPostal_Exportar.aspx'
+    )
+    format_button = driver.find_elements_by_xpath(
+        "//input[@id='rblTipo_1' and @value='txt']"
+    )[0]
+    download_button = driver.find_elements_by_xpath(
+        "//input[@name='btnDescarga' and @type='image' and @id='btnDescarga']"
+    )[0]
+    format_button.click()
+    download_button.click()
+    time.sleep(3)
+    driver.quit()
+
+    zipfile = os.environ.get("DOWNLOAD_DIR") + "CPdescargatxt.zip"
+
+    with ZipFile(zipfile, 'r') as zip_obj:
+        zip_obj.extractall()
+
+    os.remove(zipfile)
 
 
 app.run(port=5000)
